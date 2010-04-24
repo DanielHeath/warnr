@@ -1,4 +1,6 @@
 require 'rake'
+require 'rubygems'
+
 require 'spec/rake/spectask'
 require 'rake/rdoctask'
 
@@ -8,10 +10,10 @@ task :default => :test
 desc 'Generate documentation for the warner plugin.'
 Rake::RDocTask.new(:rdoc) do |rdoc|
   rdoc.rdoc_dir = 'rdoc'
-  rdoc.title    = 'Warner'
+  rdoc.title    = 'Warnr'
   rdoc.options << '--line-numbers' << '--inline-source'
   rdoc.rdoc_files.include('README')
-  rdoc.rdoc_files.include('lib/**/*.rb')
+  rdoc.rdoc_files.include('lib/*.rb')
 end
 
 desc 'Test the warner plugin.'

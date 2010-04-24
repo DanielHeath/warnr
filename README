@@ -6,9 +6,6 @@ It lets you use validations to identify situations which are warnings rather tha
 It also lets you define a callback on the model which is executed after save if there are any warnings.
 
 Usage Example
-=======
-
-The following
 
 class Client < ActiveRecord::Base
   # Notify the client manager that the ABN has not been set

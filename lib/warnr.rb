@@ -21,18 +21,20 @@ module Warnr
   
   module ClassMethods
     
+    # Specify a list of fields to work on.
+    # Validation errors on these fields will be ignored.
     def treat_validation_errors_as_warnings_on(*fields)
-      # Specify a list of fields to work on.
-      # Validation errors on these fields will be ignored.
       self.warnr_warning_fields = self.warnr_warning_fields | fields
     end
     
+    # Pass a method name; sets up a callback which runs after create_or_update.
     def on_save_with_warnings(method)
-      # Pass a method name; sets up a callback which runs after create_or_update.
       set_callback(:on_save_with_warnings, :after, method)
     end
     
   end
+  
+  private
   
   def create_or_update # :nodoc:
     super
@@ -43,11 +45,11 @@ module Warnr
     @warnings = ActiveModel::Errors.new(self)
   end
   
+  # Ugly hack; rather than preventing errors getting added, we move them afterwards.
+  # Alternative may be to modify the ActiveModel validation base class 
+  # so that it passes a record proxy to the validations that can then decide
+  # whether to return the errors or warnings collection when record.errors is called.
   def move_errors_to_warnings
-    # Ugly hack; rather than preventing errors getting added, we just move them afterwards.
-    # Would be cleaner to instead patch each of the validation classes but that's a lot more work!
-    # Alternative may be to modify the validation base class to pass a record proxy that decides 
-    # whether to return the errors or warnings collection from record.errors.
     self.class.warnr_warning_fields.each do |field|
       if errors[field]
         errors[field].each { |error| warnings.add(field, error) }
@@ -57,25 +59,19 @@ module Warnr
   end
 end
 
-module ActiveRecord
-  module Validations
-    module InstanceMethods
-      # Haven't figured out how to make the load order work without patching this directly.
-      # Please, if you manage - let me know!
-      # Looks like alias_method_chain is making things confusing again!
-      def valid_with_warnr?( *args ) 
-        warnings.clear
-        
-        valid_without_warnr?
-        
-        # WARNR: Moves any warning-level validation errors to the warnings collection
-        move_errors_to_warnings
-        # WARNR: Runs warning block if defined
-        run_callbacks :on_save_with_warnings if errors.empty? and not warnings.empty?
+module ActiveRecord::Validations::InstanceMethods
+  # Using alias_method_chain (ugly!) to wrap the valid? method.
+  def valid_with_warnr?( *args ) 
+    warnings.clear
+    
+    valid_without_warnr?
+    
+    # WARNR: Moves any warning-level validation errors to the warnings collection
+    move_errors_to_warnings
+    # WARNR: Runs warning block if defined
+    run_callbacks :on_save_with_warnings if errors.empty? and not warnings.empty?
 
-        errors.empty?
-      end
-    end
+    errors.empty?
   end
 end
 
