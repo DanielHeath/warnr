@@ -42,7 +42,8 @@ It also lets you define a callback on the model which is executed after save if 
      "rdoc/rdoc-style.css",
      "spec/spec_helper.rb",
      "spec/warnr_spec.rb",
-     "uninstall.rb"
+     "uninstall.rb",
+     "warnr.gemspec"
   ]
   s.homepage = %q{http://github.com/DanielHeath/warnr}
   s.rdoc_options = ["--charset=UTF-8"]
