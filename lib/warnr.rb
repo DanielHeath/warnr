@@ -1,73 +1,85 @@
+require 'active_record'
+
+module Warnr
+
+  # Patches ActiveRecord to:
+  # * Store a list of 'warning' fields
+  # * Store a list of callbacks for 'after save, if warnings exist'
+  # * Store a list of warning messages
+  # * Move messages out of the errors object if they belong in the warning object
+  def self.included(base)
+    base.extend(ClassMethods)
+    base.class_eval do
+      class_inheritable_accessor :warnr_warning_fields
+      self.warnr_warning_fields = []
+      define_callbacks :on_save_with_warnings
+      attr_reader :warnings
+      after_initialize :setup_warnr_warnings
+      alias_method_chain 'valid?', 'warnr'
+    end
+  end
+  
+  module ClassMethods
+    
+    def treat_validation_errors_as_warnings_on(*fields)
+      # Specify a list of fields to work on.
+      # Validation errors on these fields will be ignored.
+      self.warnr_warning_fields = self.warnr_warning_fields | fields
+    end
+    
+    def on_save_with_warnings(method)
+      # Pass a method name; sets up a callback which runs after create_or_update.
+      set_callback(:on_save_with_warnings, :after, method)
+    end
+    
+  end
+  
+  def create_or_update # :nodoc:
+    super
+    run_callbacks :on_save_with_warnings if errors.empty? and not warnings.empty?
+  end
+  
+  def setup_warnr_warnings # :nodoc:
+    @warnings = ActiveModel::Errors.new(self)
+  end
+  
+  def move_errors_to_warnings
+    # Ugly hack; rather than preventing errors getting added, we just move them afterwards.
+    # Would be cleaner to instead patch each of the validation classes but that's a lot more work!
+    # Alternative may be to modify the validation base class to pass a record proxy that decides 
+    # whether to return the errors or warnings collection from record.errors.
+    self.class.warnr_warning_fields.each do |field|
+      if errors[field]
+        errors[field].each { |error| warnings.add(field, error) }
+        errors.delete(field)
+      end
+    end
+  end
+end
+
 module ActiveRecord
   module Validations
     module InstanceMethods
-      # Hacking this method to call 'self.handle_ignored_validations'.
-      # Ugly, ugly way to do it - anyone got a better idea? (ask the rails core for a mid-validations hook?)
-      def valid?
-        errors.clear
-
-        @_on_validate = new_record? ? :create : :update
-        _run_validate_callbacks
-
-        deprecated_callback_method(:validate)
+      # Haven't figured out how to make the load order work without patching this directly.
+      # Please, if you manage - let me know!
+      # Looks like alias_method_chain is making things confusing again!
+      def valid_with_warnr?( *args ) 
+        warnings.clear
         
-        if new_record?
-          deprecated_callback_method(:validate_on_create)
-        else
-          deprecated_callback_method(:validate_on_update)
-        end
+        valid_without_warnr?
         
-        self.handle_ignored_validations if self.respond_to? :handle_ignored_validations
+        # WARNR: Moves any warning-level validation errors to the warnings collection
+        move_errors_to_warnings
+        # WARNR: Runs warning block if defined
+        run_callbacks :on_save_with_warnings if errors.empty? and not warnings.empty?
 
         errors.empty?
       end
     end
   end
 end
-        
-module ActiveModel::Validations
 
-  module ClassMethods
-    def when_validation_fails(options, &block)
-      raise "hell" unless (options[:on] or options[:treat_as_warnings])
-      handle_ignored_proc = Proc.new {
-        self.class.on_validation_errors.each do |options|
-          if options[:treat_as_warnings]
-            options[:treat_as_warnings].each do |field|
-              self.warnings[field] = self.errors[field] if self.errors[field]
-              self.errors.delete(field)
-            end
-          end
-        end
-        self.class.on_validation_errors.each do |options|
-          # If there are errors on any of the specified fields, call the block
-          fields = ((options[:on] || []) + (options[:treat_as_warnings] || []))
-          if fields.detect {|field| errors[field] or warnings[field] }
-            block.call(self)
-          end
-          # Remove errors that we've been asked to ignore.
-
-        end # each call to when_validation_fails
-      }
-      self.class_eval do
-        cattr_accessor :on_validation_errors
-        self.on_validation_errors ||= []
-        self.on_validation_errors.push(options)
-        
-        def warnings
-          @warnings ||= ActiveModel::Errors.new(self) 
-        end
-      end # Finish class_eval!
-      define_method :handle_ignored_validations, &handle_ignored_proc
-    end # when_validation_fails
-  end # ClassMethods
-  
-  # Runs all the specified validations and returns true if no errors were added otherwise false.
-  def valid?
-    errors.clear
-    _run_validate_callbacks
-    self.handle_ignored_validations if self.respond_to? :handle_ignored_validations
-    errors.empty?
-  end
-
+ActiveRecord::Base.class_eval do
+  include(Warnr)
 end
+
