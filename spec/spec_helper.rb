@@ -16,8 +16,8 @@ end
 class User < ActiveRecord::Base; end;
 class Client < ActiveRecord::Base
   # Notify the client manager that the ABN has not been set
-  belongs_to :manager, :foreign_key => "manager_id", :class_name => "User"
-  validates_presence_of :abn, :manager
+  belongs_to :manager, :class_name => "User"
+  validates_presence_of :abn, :manager_id
   
   treat_validation_errors_as_warnings_on :abn
   

@@ -3,30 +3,28 @@ Warnr
 
 Warnr builds on the power of Rails 3 validations.
 It lets you use validations to identify situations which are warnings rather than errors.
-It also lets you define a callback on the model which is executed after a validation warning/error is detected.
-
-Todo: Modify callback to trigger after a record is saved with a warning.
-
-NOTE: This is a spike. There are no tests or guarantees that it works or anything.
-The whole thing is only 70 lines (half is redefining valid? to add one line in the middle - euch!).
-You could probably rewrite it (with tests) in an hour or so if you used the current code as a reference point.
-
-This should work with any rails 3 validation (not just activerecord) that doesn't override the 'valid?' method.
+It also lets you define a callback on the model which is executed after save if there are any warnings.
 
 Usage Example
 =======
 
+The following
+
 class Client < ActiveRecord::Base
   # Notify the client manager that the ABN has not been set
-  belongs_to :manager, :foreign_key => "manager_id", :class_name => "User"    
-  validates_presence_of :abn
-  when_validation_fails(:treat_as_warnings => [:abn]) do |client|
-    if client.errors.empty?
-      MissingDataNotifier.missing_data_notification(client.manager, client).deliver
-      # Will save the record in a week, which will trigger this process again.
-      DelayedJob.create(1.week, Client, client.id, :save)
-    end
+  belongs_to :manager, :class_name => "User"
+  
+  validates_presence_of :abn, :manager_id
+  
+  treat_validation_errors_as_warnings_on :abn
+  on_save_with_warnings :handle_warnings
+  
+  def handle_warnings
+    MissingDataNotifier.missing_data_notification(client.manager, client).deliver
+    # Will save the record in a week, which will trigger this process again.
+    DelayedJob.create(1.week, Client, client.id, :save)
   end
 end
+
 
 Copyright (c) 2010 Daniel Heath, released under the MIT license
